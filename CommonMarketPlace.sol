@@ -45,7 +45,7 @@ contract ERC_1155_721_MarketPlace
 
         uint OnSellTokenId; 
         uint totalAmountOfTokens;
-        uint setAmountsOfTokens;
+        uint OnSellAmountsOfTokens;
         uint RemainingAmountOfTokens;
         uint TokenSellPrice; 
 
@@ -134,7 +134,9 @@ contract ERC_1155_721_MarketPlace
 
             Details memory detail = details[msg.sender][_tokenId];
 
-            detail.setAmountsOfTokens = _quantity;
+            detail.OnSellAmountsOfTokens = _quantity;
+
+            detail.OnSellAmountsOfTokens = _tokenId;
 
             details[msg.sender][_tokenId] = detail;
             
@@ -174,9 +176,11 @@ contract ERC_1155_721_MarketPlace
 
             detail.RemainingAmountOfTokens -= _quantity;
 
+            detail.OnSellAmountsOfTokens -= _quantity;
+
             detail.BuyedAmount += _quantity;
 
-            detail.setAmountsOfTokens -= _quantity;
+            detail.OnSellAmountsOfTokens = _tokenId;
             
             details[_owner][_tokenId] = detail;
 
