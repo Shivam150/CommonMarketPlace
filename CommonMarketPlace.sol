@@ -5,25 +5,45 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract ERC_721 is ERC721 {
+
+    address  _MarketAddress;
+
     constructor() ERC721("MyToken1", "MTK") {}
 
     function safeMint(address to, uint256 tokenId) public {
+        require(_MarketAddress == msg.sender,"Only Market Can Mint");
         _safeMint(to, tokenId);
     }
+
+    function Setter721(address MarketAddress) external  
+    {
+       _MarketAddress = MarketAddress;
+    }
+
 }
 
 import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract ERC_1155 is ERC1155 {
+
+    address public _MarketAddress;
+
     constructor() ERC1155("") {}
+
 
     function mint(address account, uint256 id, uint256 amount, bytes memory data) public
     {
+        require(msg.sender == _MarketAddress,"Only Market Can Mint");
         _mint(account, id, amount, data);
     }
 
-    function mintBatch(address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data) public
+    function Setter1155(address MarketAddress) external
+    {
+        _MarketAddress = MarketAddress;
+    }
+
+    function mintBatch(address to, uint256[] memory ids, uint256[] memory amounts,bytes memory data) public
     {
         _mintBatch(to, ids, amounts, data);
     }
@@ -31,8 +51,12 @@ contract ERC_1155 is ERC1155 {
 
 
 
-contract ERC_1155_721_MarketPlace
+contract Common_MarketPlace
 {
+    address marketAddress = address(this); 
+
+    uint Royalty;
+
     uint tokenId;
     ERC_1155 token2 = new ERC_1155();
     ERC_721 token1 = new ERC_721();
@@ -40,23 +64,18 @@ contract ERC_1155_721_MarketPlace
     struct Details{
 
         string ERCType;
-
         address Owner ;
-
         uint OnSellTokenId; 
-        uint totalAmountOfTokens;
         uint OnSellAmountsOfTokens;
         uint RemainingAmountOfTokens;
-        uint TokenSellPrice; 
-
-        address Buyer;
-
-        uint BuyedTokenId;
-        uint BuyedAmount;
+        uint TokenSellPrice;
+        uint Wallet; 
 
     }
 
     mapping(address => mapping(uint => Details)) public details;
+    // mapping(address => mapping(uint => Details)) public Buyer;
+    mapping(address => uint) public Creater;
     mapping(uint  => address) private TokenOwner;
     mapping(address => mapping(uint  => uint)) private NftTokenPrice;
 
@@ -65,14 +84,18 @@ contract ERC_1155_721_MarketPlace
     {
         token2 = ERC_1155(ERC1155Address);
         token1 = ERC_721(ERC721Address);
+        token1.Setter721(marketAddress);
+        token2.Setter1155(marketAddress);
     }
 
 
-    function CommonMint(address _owner ,uint256 _quantity) public
+    function CommonMint(address _owner ,uint256 _quantity,uint _Royalty) public
     {
+        Royalty = _Royalty;
+
         uint _tokenId = tokenId++;
 
-        require(msg.sender == _owner,"Only owner can mint");
+        require(msg.sender == _owner,"Owner Authorization needed");
 
         Details memory detail = details[msg.sender][_tokenId];
 
@@ -91,8 +114,6 @@ contract ERC_1155_721_MarketPlace
             detail.ERCType = "1155";
 
             token2.mint(_owner,_tokenId,_quantity,"");
-
-            detail.totalAmountOfTokens = token2.balanceOf(_owner,_tokenId);
 
             detail.RemainingAmountOfTokens = token2.balanceOf(_owner,_tokenId);
 
@@ -134,9 +155,13 @@ contract ERC_1155_721_MarketPlace
 
             Details memory detail = details[msg.sender][_tokenId];
 
+            NftTokenPrice[_owner][_tokenId] = _tokenPrice;
+
+            detail.TokenSellPrice = NftTokenPrice[_owner][_tokenId];
+
             detail.OnSellAmountsOfTokens = _quantity;
 
-            detail.OnSellAmountsOfTokens = _tokenId;
+            detail.OnSellTokenId = _tokenId;
 
             details[msg.sender][_tokenId] = detail;
             
@@ -145,7 +170,7 @@ contract ERC_1155_721_MarketPlace
     }
 
 
-    function Buy(address _owner , uint _tokenId,uint _quantity) public
+    function Buy(address _owner , uint _tokenId,uint _quantity,uint PayAmount) public
     {
         if(_quantity == 1 && _quantity >0)
         {
@@ -153,36 +178,55 @@ contract ERC_1155_721_MarketPlace
 
             Details memory detail = details[_owner][_tokenId];
 
+            Details memory Buyer = details[msg.sender][_tokenId];
+
             token1.safeTransferFrom(_owner,msg.sender,_tokenId);
 
-            detail.Buyer = msg.sender;
+            uint _Royalty = PayAmount*Royalty/100;
 
-            detail.BuyedTokenId = _tokenId;
+            PayAmount -= _Royalty;
+
+            Creater[address(this)] += _Royalty;
+
+            detail.Wallet += PayAmount;
+
+            Buyer.Owner = msg.sender;
 
             details[_owner][_tokenId] = detail;
+            details[msg.sender][_tokenId] = Buyer;
 
         }
         else
         {
-            require(details[_owner][_tokenId].setAmountsOfTokens > 0 ,"not in sell");
+            require(details[_owner][_tokenId].OnSellAmountsOfTokens > 0 ,"not in sell");
 
-            require(details[_owner][_tokenId].setAmountsOfTokens >= _quantity ,"Insufficient amount to buy");
+            require(details[_owner][_tokenId].OnSellAmountsOfTokens >= _quantity ,"Insufficient amount to buy");
 
             Details memory detail = details[_owner][_tokenId];
 
+            Details memory Buyer = details[msg.sender][_tokenId];
+
             token2.safeTransferFrom(_owner,msg.sender,_tokenId,_quantity,"");
 
-            detail.Buyer = msg.sender;
+            uint _Royalty = PayAmount*Royalty/100;
+
+            PayAmount -= _Royalty;
+
+            Creater[address(this)] += _Royalty;
+
+            detail.Wallet += PayAmount;
+
+            Buyer.Owner = msg.sender;
+
 
             detail.RemainingAmountOfTokens -= _quantity;
 
             detail.OnSellAmountsOfTokens -= _quantity;
 
-            detail.BuyedAmount += _quantity;
-
-            detail.OnSellAmountsOfTokens = _tokenId;
+            Buyer.Owner = msg.sender;
             
             details[_owner][_tokenId] = detail;
+            details[msg.sender][_tokenId] = Buyer;
 
         }
 
