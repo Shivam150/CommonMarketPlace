@@ -57,7 +57,10 @@ contract Common_MarketPlace
 
     uint Royalty;
 
+    uint Time;
+
     uint tokenId;
+
     ERC_1155 token2 = new ERC_1155();
     ERC_721 token1 = new ERC_721();
 
@@ -74,9 +77,9 @@ contract Common_MarketPlace
     }
 
     mapping(address => mapping(uint => Details)) public details;
-    // mapping(address => mapping(uint => Details)) public Buyer;
     mapping(address => uint) public Creater;
     mapping(uint  => address) private TokenOwner;
+    mapping(address => mapping(uint => uint)) private MarketPlace;
     mapping(address => mapping(uint  => uint)) private NftTokenPrice;
 
 
@@ -169,12 +172,62 @@ contract Common_MarketPlace
 
     }
 
+    function VestNft(uint _tokenId , uint _quantity , uint timeInMinute)  public
+    {
+        require(TokenOwner[_tokenId] == msg.sender,"Enter Valid tokenId");
+
+        require( NftTokenPrice[msg.sender][_tokenId] > 0,"Not in sell");
+
+        require(details[msg.sender][_tokenId].OnSellAmountsOfTokens >= _quantity ,"This much amount not set in sell");
+
+        MarketPlace[address(this)][_tokenId] = _quantity;
+
+        Details memory detail = details[msg.sender][_tokenId];
+
+        detail.OnSellTokenId -= _tokenId;
+
+        detail.OnSellAmountsOfTokens -= _quantity;
+
+        uint _time  = block.timestamp + timeInMinute*1 minutes;
+
+        Time = _time ;
+
+        details[msg.sender][_tokenId] = detail;
+        
+    }
+
+
+    function Redeam(address _owner , uint _tokenId) public
+    {
+            uint _quantity = MarketPlace[address(this)][_tokenId];
+            
+            require(TokenOwner[_tokenId] == _owner,"Enter Valid tokenId");
+
+            require(MarketPlace[address(this)][_tokenId] > 0,"Nft Not Vested");
+
+            require(Time <= block.timestamp,"locked");
+
+
+            MarketPlace[address(this)][_tokenId] -= _quantity;
+
+            Details memory detail = details[_owner][_tokenId];
+
+            detail.OnSellTokenId  += _tokenId;
+
+            detail.OnSellAmountsOfTokens += _quantity; 
+
+            details[_owner][_tokenId] = detail; 
+
+    }
+
 
     function Buy(address _owner , uint _tokenId,uint _quantity,uint PayAmount) public
     {
         if(_quantity == 1 && _quantity >0)
         {
             require( NftTokenPrice[_owner][_tokenId] > 0,"Not in sell");
+
+            require(PayAmount == NftTokenPrice[_owner][_tokenId],"Invalid Payment Amount");
 
             Details memory detail = details[_owner][_tokenId];
 
@@ -192,6 +245,8 @@ contract Common_MarketPlace
 
             Buyer.Owner = msg.sender;
 
+            TokenOwner[_tokenId] = msg.sender;
+
             details[_owner][_tokenId] = detail;
             details[msg.sender][_tokenId] = Buyer;
 
@@ -201,6 +256,8 @@ contract Common_MarketPlace
             require(details[_owner][_tokenId].OnSellAmountsOfTokens > 0 ,"not in sell");
 
             require(details[_owner][_tokenId].OnSellAmountsOfTokens >= _quantity ,"Insufficient amount to buy");
+
+            require(PayAmount == NftTokenPrice[_owner][_tokenId],"Invalid Payment Amount");
 
             Details memory detail = details[_owner][_tokenId];
 
@@ -224,8 +281,11 @@ contract Common_MarketPlace
             detail.OnSellAmountsOfTokens -= _quantity;
 
             Buyer.Owner = msg.sender;
+
+            TokenOwner[_tokenId] = msg.sender;
             
             details[_owner][_tokenId] = detail;
+
             details[msg.sender][_tokenId] = Buyer;
 
         }
