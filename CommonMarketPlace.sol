@@ -2,6 +2,7 @@
 pragma solidity >=0.7.0 <0.9.0;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+// import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract ERC_721 is ERC721 {
@@ -55,6 +56,12 @@ contract Common_MarketPlace
 {
     address marketAddress = address(this); 
 
+    uint private HighestBidPrice;
+
+    address User ;
+
+    uint TokenId;
+
     uint Royalty;
 
     uint Time;
@@ -72,8 +79,9 @@ contract Common_MarketPlace
         uint OnSellAmountsOfTokens;
         uint RemainingAmountOfTokens;
         uint TokenSellPrice;
+        uint PriceAmount;
+        uint OnBidTokenId; 
         uint Wallet; 
-
     }
 
     mapping(address => mapping(uint => Details)) public details;
@@ -92,7 +100,7 @@ contract Common_MarketPlace
     }
 
 
-    function CommonMint(address _owner ,uint256 _quantity,uint _Royalty) public
+    function CommonMint(address _owner ,uint256 _Supply,uint _Royalty) public
     {
         Royalty = _Royalty;
 
@@ -104,7 +112,7 @@ contract Common_MarketPlace
 
         detail.Owner = _owner;
 
-        if(_quantity == 1 && _quantity >0)
+        if(_Supply == 1 && _Supply >0)
         {
             detail.ERCType = "721";
 
@@ -116,7 +124,7 @@ contract Common_MarketPlace
         {
             detail.ERCType = "1155";
 
-            token2.mint(_owner,_tokenId,_quantity,"");
+            token2.mint(_owner,_tokenId,_Supply,"");
 
             detail.RemainingAmountOfTokens = token2.balanceOf(_owner,_tokenId);
 
@@ -130,11 +138,11 @@ contract Common_MarketPlace
 
 
 
-    function SetOnSell(address _owner,uint _tokenId ,uint _tokenPrice,uint _quantity) public
+    function SetOnSell(address _owner,uint _tokenId ,uint _tokenPrice,uint _Supply) public
     {
-        if(_quantity == 1 && _quantity >0)
+        if(_Supply == 1 &&_Supply >0)
         {
-            require(msg.sender == token1.ownerOf(_tokenId),"Owner Authorization Needed");
+            require(msg.sender == token1.ownerOf(_tokenId),"Only Token Owner Can Set On Sell");
 
             require(token1.ownerOf(_tokenId) == _owner,"Enter Valid tokenId");
 
@@ -144,17 +152,19 @@ contract Common_MarketPlace
 
             detail.TokenSellPrice = NftTokenPrice[_owner][_tokenId];
 
+            detail.OnSellAmountsOfTokens = _Supply;
+
             detail.OnSellTokenId = _tokenId;
             
             details[msg.sender][_tokenId] = detail;
         }
         else{
 
-            require(msg.sender == details[msg.sender][_tokenId].Owner,"Owner Authorization Needed");
+            require(msg.sender == TokenOwner[_tokenId],"Only Token Owner Can Set On Sell");
 
             require(TokenOwner[_tokenId] == _owner,"Enter Valid tokenId");
 
-            require(token2.balanceOf(_owner,_tokenId) >= _quantity,"Insufficient balance to set On sell");
+            require(token2.balanceOf(_owner,_tokenId) >= _Supply,"Insufficient Supply to set On sell");
 
             Details memory detail = details[msg.sender][_tokenId];
 
@@ -162,7 +172,7 @@ contract Common_MarketPlace
 
             detail.TokenSellPrice = NftTokenPrice[_owner][_tokenId];
 
-            detail.OnSellAmountsOfTokens = _quantity;
+            detail.OnSellAmountsOfTokens = _Supply;
 
             detail.OnSellTokenId = _tokenId;
 
@@ -172,21 +182,33 @@ contract Common_MarketPlace
 
     }
 
-    function VestNft(uint _tokenId , uint _quantity , uint timeInMinute)  public
+    function VestNft(uint _tokenId , uint _Supply , uint timeInMinute)  public
     {
+        // require(msg.sender == );
         require(TokenOwner[_tokenId] == msg.sender,"Enter Valid tokenId");
 
         require( NftTokenPrice[msg.sender][_tokenId] > 0,"Not in sell");
 
-        require(details[msg.sender][_tokenId].OnSellAmountsOfTokens >= _quantity ,"This much amount not set in sell");
+        require(details[msg.sender][_tokenId].OnSellAmountsOfTokens >= _Supply ,"Insufficient Supply in sell");
 
-        MarketPlace[address(this)][_tokenId] = _quantity;
+        // MarketPlace[address(this)][_tokenId] = _quantity;
+
+        if(_Supply == 1 && _Supply >0)
+        {
+             token1.safeTransferFrom(msg.sender,address(this) ,_tokenId);
+        }
+        else{
+            token2.safeTransferFrom(msg.sender,address(this), _tokenId, _Supply, "");
+            MarketPlace[address(this)][_tokenId] = _Supply;
+        }
+
+        // MarketPlace[address(this)][_tokenId] = _quantity;
 
         Details memory detail = details[msg.sender][_tokenId];
 
         detail.OnSellTokenId -= _tokenId;
 
-        detail.OnSellAmountsOfTokens -= _quantity;
+        detail.OnSellAmountsOfTokens -= _Supply;
 
         uint _time  = block.timestamp + timeInMinute*1 minutes;
 
@@ -197,9 +219,11 @@ contract Common_MarketPlace
     }
 
 
-    function Redeam(address _owner , uint _tokenId) public
+    function Redeam(address _owner , uint _tokenId) public 
     {
-            uint _quantity = MarketPlace[address(this)][_tokenId];
+            uint  _Supply = MarketPlace[address(this)][_tokenId];
+
+            require(msg.sender == _owner, "Only Owner can Redeam");
             
             require(TokenOwner[_tokenId] == _owner,"Enter Valid tokenId");
 
@@ -207,23 +231,97 @@ contract Common_MarketPlace
 
             require(Time <= block.timestamp,"locked");
 
+             if( _Supply == 1 &&  _Supply >0)
+            {
+               token1.safeTransferFrom(address(this),_owner,_tokenId);
+            }
+            else{
+               token2.safeTransferFrom(address(this), _owner, _tokenId, _Supply, "");
+            } 
 
-            MarketPlace[address(this)][_tokenId] -= _quantity;
+            // MarketPlace[address(this)][_tokenId] -= _quantity;
 
             Details memory detail = details[_owner][_tokenId];
 
             detail.OnSellTokenId  += _tokenId;
 
-            detail.OnSellAmountsOfTokens += _quantity; 
+            detail.OnSellAmountsOfTokens +=  _Supply; 
 
             details[_owner][_tokenId] = detail; 
 
     }
 
-
-    function Buy(address _owner , uint _tokenId,uint _quantity,uint PayAmount) public
+     function SetOnBid(address _owner ,uint _tokenId ,uint _tokenPrice) public
     {
-        if(_quantity == 1 && _quantity >0)
+        require(msg.sender == token1.ownerOf(_tokenId),"Owner Authorization Needed");
+        require( token1.ownerOf(tokenId) == _owner,"Enter Valid tokenId");
+
+        Details memory detail = details[_owner][_tokenId];
+
+        detail.PriceAmount = _tokenPrice;
+        detail.OnBidTokenId = _tokenId;
+
+       details[_owner][tokenId] = detail;
+
+    }
+
+
+     function BidOnNft(address user , uint Amount, uint _tokenId) public
+    {  
+
+       require(msg.sender == token1.ownerOf(tokenId),"Owner Authorization needed");
+       require(Amount != HighestBidPrice,"Price given");
+       require(details[msg.sender][_tokenId].OnBidTokenId == _tokenId,"Token is not in Bid");
+       require(Amount > details[msg.sender][_tokenId].PriceAmount,"Amount must be Greater than");
+       require(user != token1.ownerOf(tokenId),"Owner can not Bid his Own Nft");
+
+        if(Amount > HighestBidPrice)
+        {
+            User = user;
+            TokenId = tokenId;
+            HighestBidPrice = Amount;
+        }
+
+    }
+
+
+    function FetchHighestBit() public view returns(uint)
+    {
+        return HighestBidPrice;
+    }
+
+     function EndAuction() public
+    {
+            Details memory detail= details[msg.sender][TokenId];
+            require(msg.sender == token1.ownerOf(TokenId),"Only token owner can End Auction");
+            // detail.TokenId= 0;
+
+            detail.Owner =  0x0000000000000000000000000000000000000000;
+
+            detail.Wallet += HighestBidPrice;
+
+            details[msg.sender][TokenId] = detail;
+
+            // NftToken[User].TokenId = 0;
+            // NftToken[User].PriceAmount = 0;
+
+            Details memory detail2 = details[User][TokenId];
+
+            // detail2.TokenId = TokenId;
+            detail2.Owner = User;
+            
+            details[User][TokenId] = detail2;
+    }
+
+
+
+    function Buy(address _owner , uint _tokenId,uint  _Supply) public payable 
+    {
+        require(msg.value != 0,"Payment amount can not be zero");
+
+        uint PayAmount = msg.value;
+
+        if( _Supply == 1 && _Supply >0)
         {
             require( NftTokenPrice[_owner][_tokenId] > 0,"Not in sell");
 
@@ -235,7 +333,7 @@ contract Common_MarketPlace
 
             token1.safeTransferFrom(_owner,msg.sender,_tokenId);
 
-            uint _Royalty = PayAmount*Royalty/100;
+            uint _Royalty = (msg.value)*Royalty/100;
 
             PayAmount -= _Royalty;
 
@@ -255,7 +353,7 @@ contract Common_MarketPlace
         {
             require(details[_owner][_tokenId].OnSellAmountsOfTokens > 0 ,"not in sell");
 
-            require(details[_owner][_tokenId].OnSellAmountsOfTokens >= _quantity ,"Insufficient amount to buy");
+            require(details[_owner][_tokenId].OnSellAmountsOfTokens >=  _Supply ,"Insufficient amount to buy");
 
             require(PayAmount == NftTokenPrice[_owner][_tokenId],"Invalid Payment Amount");
 
@@ -263,7 +361,7 @@ contract Common_MarketPlace
 
             Details memory Buyer = details[msg.sender][_tokenId];
 
-            token2.safeTransferFrom(_owner,msg.sender,_tokenId,_quantity,"");
+            token2.safeTransferFrom(_owner,msg.sender,_tokenId, _Supply,"");
 
             uint _Royalty = PayAmount*Royalty/100;
 
@@ -276,9 +374,9 @@ contract Common_MarketPlace
             Buyer.Owner = msg.sender;
 
 
-            detail.RemainingAmountOfTokens -= _quantity;
+            detail.RemainingAmountOfTokens -= _Supply;
 
-            detail.OnSellAmountsOfTokens -= _quantity;
+            detail.OnSellAmountsOfTokens -=  _Supply;
 
             Buyer.Owner = msg.sender;
 
